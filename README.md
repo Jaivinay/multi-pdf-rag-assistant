@@ -1,101 +1,168 @@
-````markdown
-# Enterprise RAG Assistant
-
-A local Retrieval-Augmented Generation application that allows users to upload multiple PDF files and ask questions from the uploaded knowledge base. The system retrieves relevant information from the documents and generates concise answers using a local language model.
+# Enterprise Multi-PDF RAG Assistant
 
 ## Overview
 
-This project demonstrates an end-to-end RAG workflow using Python, Streamlit, LangChain, FAISS, Ollama, and Llama 3.2.
+Enterprise Multi-PDF RAG Assistant is a Retrieval-Augmented Generation (RAG) application built using Python, Streamlit, LangChain, FAISS, Ollama, and Llama 3.2. The application enables users to upload multiple PDF documents, build a searchable knowledge base, and interact with the uploaded content through natural language.
 
-The application allows users to upload PDF documents, extract text, split the content into smaller chunks, generate embeddings, store them in a FAISS vector database, retrieve relevant chunks based on user questions, and generate answers using a local LLM.
+The system combines semantic search with a local Large Language Model (LLM) to retrieve relevant information from uploaded documents and generate context-aware responses. The project demonstrates the complete RAG workflow, including document ingestion, text preprocessing, embedding generation, vector storage, semantic retrieval, prompt engineering, and local LLM inference.
 
-## Tech Stack
+---
 
-Python, Streamlit, LangChain, FAISS, Ollama, Llama 3.2, Nomic Embed Text, PyPDFLoader
+## Key Features
 
-## How It Works
+- Multi-PDF document upload and processing
+- Automatic text extraction using PyPDFLoader
+- Recursive document chunking with configurable overlap
+- Semantic embeddings using Nomic Embed Text
+- FAISS vector database for similarity search
+- Local Llama 3.2 inference using Ollama
+- Retrieval-Augmented Generation (RAG)
+- Streamlit-based conversational interface
+- Source document and page reference display
+- Persistent FAISS index and document metadata
+- Chat history persistence
+- Query logging and response latency tracking
+- Knowledge base reset functionality
 
-The user uploads PDF files through the Streamlit interface. The application extracts text from the PDFs using PyPDFLoader and splits the text into smaller overlapping chunks. Each chunk is converted into an embedding using the Nomic Embed Text model. These embeddings are stored in FAISS for similarity search.
+---
 
-When a user asks a question, the question is also converted into an embedding. FAISS compares it with the stored document embeddings and retrieves the most relevant chunks. These chunks are passed as context to Llama 3.2 through Ollama, which generates a concise answer based on the retrieved information.
+## Technology Stack
 
-The application also saves the FAISS index and document metadata locally so the knowledge base can be reused without reprocessing the PDFs. Query logs are stored with question, answer, retrieved sources, response time, and model details.
+| Category | Technologies |
+|----------|--------------|
+| Programming Language | Python |
+| User Interface | Streamlit |
+| AI Framework | LangChain |
+| Vector Database | FAISS |
+| Embedding Model | Nomic Embed Text |
+| Large Language Model | Llama 3.2 |
+| Local Model Runtime | Ollama |
+| Document Processing | PyPDFLoader |
 
-## Architecture
+---
 
-PDF Upload  
-→ Text Extraction  
-→ Document Chunking  
-→ Embedding Generation  
-→ FAISS Vector Store  
-→ Similarity Search  
-→ Retrieved Context  
-→ Llama 3.2  
-→ Final Answer
+## System Architecture
 
-## Features
+```
+PDF Documents
+      │
+      ▼
+Text Extraction
+      │
+      ▼
+Document Chunking
+      │
+      ▼
+Embedding Generation
+      │
+      ▼
+FAISS Vector Database
+      │
+      ▼
+Semantic Similarity Search
+      │
+      ▼
+Relevant Context Retrieval
+      │
+      ▼
+Llama 3.2 (Ollama)
+      │
+      ▼
+AI Generated Response
+```
 
-- Upload and process multiple PDF files
-- Extract text from PDF documents
-- Split documents into smaller overlapping chunks
-- Generate embeddings using Nomic Embed Text
-- Store and retrieve vectors using FAISS
-- Generate answers using local Llama 3.2 through Ollama
-- View retrieved sources and page references
-- Save FAISS index for reuse
-- Track query logs and response latency
-- Reset knowledge base when needed
+---
 
-## Installation and Setup
+## Installation
 
-Clone the repository:
+Clone the repository.
 
 ```bash
 git clone https://github.com/Jaivinay/multi-pdf-rag-assistant.git
 cd multi-pdf-rag-assistant
-````
+```
 
-Create and activate a virtual environment:
+Create and activate a virtual environment.
 
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-Install dependencies:
+Install the required dependencies.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Install Ollama and pull the required models:
+Install Ollama and download the required models.
 
 ```bash
 ollama pull llama3.2
 ollama pull nomic-embed-text
 ```
 
-Run the application:
+Run the application.
 
 ```bash
 streamlit run app.py
 ```
 
-Open the app in your browser:
+Open the application at:
 
-```text
-http://localhost:8501
-```
+**http://localhost:8501**
 
-## Example Questions
+---
 
-What is Amazon S3?
-Explain AWS Glue.
-What is overfitting?
-Explain SQL window functions.
-What is Python?
+## Project Workflow
 
-## Key Concepts Demonstrated
+1. Upload one or more PDF documents.
+2. Extract text from the uploaded documents.
+3. Split the extracted text into overlapping chunks.
+4. Generate vector embeddings for each chunk.
+5. Store embeddings in a FAISS vector database.
+6. Convert the user question into an embedding.
+7. Retrieve the most relevant document chunks using semantic similarity.
+8. Pass the retrieved context to Llama 3.2 through Ollama.
+9. Generate an accurate, context-aware response with supporting document references.
 
-Retrieval-Augmented Generation, Large Language Models, vector embeddings, semantic search, FAISS vector database, prompt engineering, local LLM usage with Ollama, Streamlit application development, persistent vector storage, and query logging.
+---
 
+## Learning Outcomes
+
+This project demonstrates practical implementation of:
+
+- Retrieval-Augmented Generation (RAG)
+- Large Language Models (LLMs)
+- Vector Embeddings
+- Semantic Search
+- Vector Databases
+- Prompt Engineering
+- Local AI Model Deployment
+- LangChain
+- FAISS
+- Streamlit Application Development
+
+---
+
+## Future Enhancements
+
+- Support additional document formats (DOCX, TXT, CSV)
+- Streaming response generation
+- Conversation memory
+- Hybrid search and reranking
+- Authentication and user management
+- Cloud deployment
+- Analytics dashboard
+- Resume and Job Description comparison
+- AI Interview Assistant
+
+---
+
+## Author
+
+**Jaivinay Gudiveka**
+
+GitHub: https://github.com/Jaivinay
+
+LinkedIn: https://www.linkedin.com/in/jaivinay-gudiveka
