@@ -1,8 +1,8 @@
 venv/
-documents/
-faiss_index/
-chat_history.json
-pdf_info.json
 __pycache__/
 .DS_Store
-.env
+logs/
+chat_history.json
+documents/
+faiss_index/
+pdf_info.json

@@ -1,6 +1,9 @@
 import os
 import json
 import shutil
+import time
+from datetime import datetime
+
 import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -9,13 +12,18 @@ from langchain_community.vectorstores import FAISS
 from ollama import chat
 
 
-CHAT_HISTORY_FILE = "chat_history.json"
 PDF_INFO_FILE = "pdf_info.json"
 FAISS_INDEX_DIR = "faiss_index"
+DOCUMENTS_DIR = "documents"
+LOG_DIR = "logs"
+QUERY_LOG_FILE = "logs/query_logs.jsonl"
+
+LLM_MODEL = "llama3.2"
+EMBEDDING_MODEL = "nomic-embed-text"
 
 
 st.set_page_config(
-    page_title="Multi-PDF RAG Assistant",
+    page_title="Enterprise RAG Assistant",
     page_icon="📚",
     layout="wide"
 )
@@ -40,26 +48,12 @@ st.markdown(
 )
 
 
-def save_chat_history():
-    with open(CHAT_HISTORY_FILE, "w") as f:
-        json.dump(st.session_state.messages, f, indent=4)
-
-
-def load_chat_history():
-    if os.path.exists(CHAT_HISTORY_FILE):
-        try:
-            with open(CHAT_HISTORY_FILE, "r") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            return []
-    return []
-
-
 def save_pdf_info(file_names, pages, chunks):
     info = {
         "files": file_names,
         "pages": pages,
-        "chunks": chunks
+        "chunks": chunks,
+        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
     with open(PDF_INFO_FILE, "w") as f:
@@ -79,7 +73,7 @@ def load_pdf_info():
 def load_faiss_index():
     if os.path.exists(FAISS_INDEX_DIR):
         try:
-            embeddings = OllamaEmbeddings(model="nomic-embed-text")
+            embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL)
 
             vector_store = FAISS.load_local(
                 FAISS_INDEX_DIR,
@@ -88,6 +82,7 @@ def load_faiss_index():
             )
 
             return vector_store
+
         except Exception as e:
             st.warning(f"Could not load saved FAISS index: {e}")
             return None
@@ -95,8 +90,165 @@ def load_faiss_index():
     return None
 
 
+def log_query(question, answer, sources, latency_seconds):
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    log_record = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "question": question,
+        "answer": answer,
+        "sources": [
+            {
+                "file": source["file"],
+                "page": source["page"]
+            }
+            for source in sources
+        ],
+        "latency_seconds": latency_seconds,
+        "llm_model": LLM_MODEL,
+        "embedding_model": EMBEDDING_MODEL
+    }
+
+    with open(QUERY_LOG_FILE, "a") as f:
+        f.write(json.dumps(log_record) + "\n")
+
+
+def process_pdfs(uploaded_files):
+    os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+
+    all_documents = []
+
+    for uploaded_file in uploaded_files:
+        pdf_path = os.path.join(DOCUMENTS_DIR, uploaded_file.name)
+
+        with open(pdf_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        loader = PyPDFLoader(pdf_path)
+        documents = loader.load()
+
+        for doc in documents:
+            doc.metadata["source"] = uploaded_file.name
+            doc.metadata["page"] = doc.metadata.get("page", 0) + 1
+
+        all_documents.extend(documents)
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=80
+    )
+
+    chunks = text_splitter.split_documents(all_documents)
+
+    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL)
+
+    vector_store = FAISS.from_documents(
+        chunks,
+        embeddings
+    )
+
+    vector_store.save_local(FAISS_INDEX_DIR)
+
+    return vector_store, len(all_documents), len(chunks)
+
+
+def is_greeting(question):
+    greetings = [
+        "hi",
+        "hello",
+        "hey",
+        "hii",
+        "hai",
+        "good morning",
+        "good afternoon",
+        "good evening"
+
+    ]
+
+    return question.lower().strip() in greetings
+
+
+def generate_greeting_answer():
+    return """
+Hello! 👋
+
+I'm your enterprise-style RAG assistant.
+
+You can ask me questions from the processed knowledge base, and I will answer with practical, source-grounded responses.
+"""
+
+
+def generate_rag_answer(question, vector_store):
+    docs = vector_store.similarity_search(
+        question,
+        k=4
+    )
+
+    context_parts = []
+
+    for doc in docs:
+        source = doc.metadata.get("source", "Unknown file")
+        page = doc.metadata.get("page", "Unknown page")
+
+        context_parts.append(
+            f"Source: {source}, Page: {page}\nContent:\n{doc.page_content}"
+        )
+
+    context = "\n\n---\n\n".join(context_parts)
+
+    prompt = f"""
+You are an enterprise AI assistant used by internal business and technology teams.
+
+Your job is to answer the user's question using only the provided knowledge context.
+
+Rules:
+1. Answer directly and naturally.
+2. Do not mention PDFs, documents, uploaded files, or context.
+3. Do not say "according to", "based on", "from the PDF", or "the document says".
+4. Keep the answer concise, practical, and interview-friendly.
+5. If the answer is not available, say:
+   "I don't have enough information to answer that confidently."
+6. Use bullets when useful.
+7. Do not invent facts.
+8. Prefer clear business/technical explanation.
+
+Knowledge Context:
+{context}
+
+User Question:
+{question}
+
+Final Answer:
+"""
+
+    response = chat(
+        model=LLM_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    answer = response["message"]["content"]
+
+    sources = []
+
+    for doc in docs:
+        sources.append(
+            {
+                "file": doc.metadata.get("source", "Unknown file"),
+                "page": doc.metadata.get("page", "Unknown page"),
+                "content": doc.page_content
+            }
+        )
+
+    return answer, sources
+
+
 if "messages" not in st.session_state:
-    st.session_state.messages = load_chat_history()
+    st.session_state.messages = []
 
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = load_faiss_index()
@@ -122,152 +274,8 @@ if pdf_info and st.session_state.pdf_processed:
     st.session_state.total_chunks = pdf_info.get("chunks", 0)
 
 
-def process_pdfs(uploaded_files):
-    os.makedirs("documents", exist_ok=True)
-
-    all_documents = []
-
-    for uploaded_file in uploaded_files:
-        pdf_path = f"documents/{uploaded_file.name}"
-
-        with open(pdf_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        loader = PyPDFLoader(pdf_path)
-        documents = loader.load()
-
-        for doc in documents:
-            doc.metadata["source"] = uploaded_file.name
-            doc.metadata["page"] = doc.metadata.get("page", 0) + 1
-
-        all_documents.extend(documents)
-
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=700,
-        chunk_overlap=100
-    )
-
-    chunks = text_splitter.split_documents(all_documents)
-
-    embeddings = OllamaEmbeddings(model="nomic-embed-text")
-
-    vector_store = FAISS.from_documents(
-        chunks,
-        embeddings
-    )
-
-    vector_store.save_local(FAISS_INDEX_DIR)
-
-    return vector_store, len(all_documents), len(chunks)
-
-
-def is_greeting(question):
-    greetings = [
-        "hi",
-        "hello",
-        "hey",
-        "hii",
-        "hai",
-        "good morning",
-        "good afternoon",
-        "good evening"
-    ]
-
-    return question.lower().strip() in greetings
-
-
-def generate_greeting_answer():
-    return """
-Hello Jaivinay! 👋
-
-I'm your Multi-PDF RAG Assistant.
-
-You can ask me questions from your uploaded PDFs about:
-
-- AWS
-- SQL
-- Python
-- Data Science
-- Interview preparation
-
-How can I help you today?
-"""
-
-
-def generate_rag_answer(question, vector_store):
-    docs = vector_store.similarity_search(
-        question,
-        k=8
-    )
-
-    context_parts = []
-
-    for doc in docs:
-        source = doc.metadata.get("source", "Unknown file")
-        page = doc.metadata.get("page", "Unknown page")
-
-        context_parts.append(
-            f"Source: {source}, Page: {page}\nContent:\n{doc.page_content}"
-        )
-
-    context = "\n\n---\n\n".join(context_parts)
-
-    prompt = f"""
-You are a helpful Multi-PDF RAG assistant.
-
-Use ONLY the provided PDF context to answer the user's question.
-
-Rules:
-1. Give a direct answer immediately.
-2. Answer naturally like a teacher or interviewer.
-3. Do not say:
-   - According to the PDF
-   - Based on the uploaded documents
-   - The document states
-4. Use the PDF information silently.
-5. If the question is broad, summarize the most relevant information found in the uploaded PDFs.
-6. If the answer is not found in the uploaded PDFs, say:
-   "I couldn't find that information in the uploaded files."
-7. Keep answers concise and interview-friendly.
-8. Use bullet points when useful.
-
-PDF Context:
-{context}
-
-User Question:
-{question}
-
-Final Answer:
-"""
-
-    response = chat(
-        model="llama3.2",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    answer = response["message"]["content"]
-
-    sources = []
-
-    for doc in docs:
-        sources.append(
-            {
-                "file": doc.metadata.get("source", "Unknown file"),
-                "page": doc.metadata.get("page", "Unknown page"),
-                "content": doc.page_content
-            }
-        )
-
-    return answer, sources
-
-
 with st.sidebar:
-    st.header("📂 Upload PDFs")
+    st.header("📂 Knowledge Base")
 
     uploaded_files = st.file_uploader(
         "Upload up to 5 PDF files",
@@ -279,8 +287,8 @@ with st.sidebar:
         if len(uploaded_files) > 5:
             st.error("Please upload only up to 5 PDFs.")
         else:
-            if st.button("Process PDFs"):
-                with st.spinner("Processing PDFs, creating chunks, embeddings, and FAISS vector store..."):
+            if st.button("Process Knowledge Base"):
+                with st.spinner("Processing PDFs, creating chunks, embeddings, and FAISS index..."):
                     vector_store, total_pages, total_chunks = process_pdfs(uploaded_files)
 
                     st.session_state.vector_store = vector_store
@@ -296,13 +304,11 @@ with st.sidebar:
                         total_chunks
                     )
 
-                    save_chat_history()
-
-                st.success("PDFs processed successfully!")
+                st.success("Knowledge base processed successfully!")
 
     st.divider()
 
-    st.subheader("📊 Knowledge Base Status")
+    st.subheader("📊 System Status")
 
     if st.session_state.pdf_processed:
         st.success("Ready")
@@ -313,18 +319,16 @@ with st.sidebar:
 
         st.write(f"Total Pages: {st.session_state.total_pages}")
         st.write(f"Total Chunks: {st.session_state.total_chunks}")
+        st.write(f"LLM: {LLM_MODEL}")
+        st.write(f"Embeddings: {EMBEDDING_MODEL}")
 
     else:
-        st.warning("No PDFs processed yet.")
+        st.warning("No knowledge base processed yet.")
 
     st.divider()
 
-    if st.button("Clear Chat"):
+    if st.button("New Chat"):
         st.session_state.messages = []
-
-        if os.path.exists(CHAT_HISTORY_FILE):
-            os.remove(CHAT_HISTORY_FILE)
-
         st.rerun()
 
     if st.button("Reset Knowledge Base"):
@@ -334,9 +338,6 @@ with st.sidebar:
         st.session_state.file_names = []
         st.session_state.total_pages = 0
         st.session_state.total_chunks = 0
-
-        if os.path.exists(CHAT_HISTORY_FILE):
-            os.remove(CHAT_HISTORY_FILE)
 
         if os.path.exists(PDF_INFO_FILE):
             os.remove(PDF_INFO_FILE)
@@ -348,31 +349,28 @@ with st.sidebar:
 
 
 st.markdown(
-    '<div class="main-title">📚 Multi-PDF RAG Assistant</div>',
+    '<div class="main-title">📚 Enterprise RAG Assistant</div>',
     unsafe_allow_html=True
 )
 
 st.markdown(
-    '<div class="subtitle">Ask questions across multiple uploaded PDFs using local Llama 3.2, FAISS, and embeddings.</div>',
+    '<div class="subtitle">Source-grounded AI assistant with retrieval, latency tracking, and enterprise-style query logging.</div>',
     unsafe_allow_html=True
 )
 
 if not st.session_state.pdf_processed:
-    st.info("Upload PDFs from the sidebar and click **Process PDFs** to start.")
+    st.info("Upload PDFs from the sidebar and click **Process Knowledge Base** to start.")
 else:
-    st.success("Your PDFs are ready. Ask questions below.")
+    st.success("Knowledge base is ready. Ask questions below.")
 
 
-with st.expander("💡 Example Questions You Can Ask"):
-    st.write("- Hi")
-    st.write("- What is Python?")
-    st.write("- What is AWS Glue?")
+with st.expander("💡 Example Questions"):
     st.write("- What is Amazon S3?")
-    st.write("- What is ROW_NUMBER()?")
-    st.write("- How do you find the second highest salary in SQL?")
+    st.write("- Explain AWS Glue in simple terms.")
+    st.write("- What is Lambda used for?")
     st.write("- What is overfitting?")
-    st.write("- What are Python lists?")
-    st.write("- Why should we hire you?")
+    st.write("- Explain SQL window functions.")
+    st.write("- How should I explain this in an interview?")
 
 
 for message in st.session_state.messages:
@@ -389,7 +387,7 @@ for message in st.session_state.messages:
                     st.write("---------------------")
 
 
-user_question = st.chat_input("Ask a question from your PDFs...")
+user_question = st.chat_input("Ask a question...")
 
 if user_question:
     st.session_state.messages.append(
@@ -406,22 +404,30 @@ if user_question:
         if is_greeting(user_question):
             answer = generate_greeting_answer()
             sources = []
+            latency_seconds = 0
             st.write(answer)
 
         else:
             if not st.session_state.pdf_processed or st.session_state.vector_store is None:
-                answer = "Please upload and process PDFs first."
+                answer = "Please upload and process the knowledge base first."
                 sources = []
+                latency_seconds = 0
                 st.warning(answer)
 
             else:
-                with st.spinner("Searching PDFs and generating answer..."):
+                with st.spinner("Retrieving relevant context and generating answer..."):
+                    start_time = time.time()
+
                     answer, sources = generate_rag_answer(
                         user_question,
                         st.session_state.vector_store
                     )
 
+                    latency_seconds = round(time.time() - start_time, 2)
+
                     st.write(answer)
+
+                    st.caption(f"Response time: {latency_seconds} seconds")
 
                     if sources:
                         with st.expander("View Retrieved Sources"):
@@ -432,12 +438,18 @@ if user_question:
                                 st.write(source["content"])
                                 st.write("---------------------")
 
+                    log_query(
+                        user_question,
+                        answer,
+                        sources,
+                        latency_seconds
+                    )
+
     st.session_state.messages.append(
         {
             "role": "assistant",
             "content": answer,
-            "sources": sources
+            "sources": sources,
+            "latency_seconds": latency_seconds
         }
     )
-
-    save_chat_history()
