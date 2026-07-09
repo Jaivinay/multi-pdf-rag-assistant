@@ -108,10 +108,6 @@ Run the application.
 streamlit run app.py
 ```
 
-Open the application at:
-
-**http://localhost:8501**
-
 ---
 
 ## Project Workflow
