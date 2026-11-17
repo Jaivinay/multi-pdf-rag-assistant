@@ -2,7 +2,7 @@
 
 ## Overview
 
-Enterprise Multi-PDF RAG Assistant is a Retrieval-Augmented Generation (RAG) application built using Python, Streamlit, LangChain, FAISS, Ollama, and Llama 3.2. The application enables users to upload multiple PDF documents, build a searchable knowledge base, and interact with the uploaded content through natural language.
+Enterprise Multi-PDF RAG Assistant is a Retrieval-Augmented Generation (RAG) application built using Python, Streamlit, LangChain, Pinecone, FAISS, Ollama, and Llama 3.2. The application enables users to upload multiple PDF documents, build a searchable knowledge base, and interact with the uploaded content through natural language.
 
 The system combines semantic search with a local Large Language Model (LLM) to retrieve relevant information from uploaded documents and generate context-aware responses. The project demonstrates the complete RAG workflow, including document ingestion, text preprocessing, embedding generation, vector storage, semantic retrieval, prompt engineering, and local LLM inference.
 
@@ -33,7 +33,7 @@ The system combines semantic search with a local Large Language Model (LLM) to r
 | Programming Language | Python |
 | User Interface | Streamlit |
 | AI Framework | LangChain |
-| Vector Database | FAISS |
+| Vector Database | Pinecone | FAISS |
 | Embedding Model | Nomic Embed Text |
 | Large Language Model | Llama 3.2 |
 | Local Model Runtime | Ollama |
@@ -56,7 +56,7 @@ Document Chunking
 Embedding Generation
       │
       ▼
-FAISS Vector Database
+Pinecone Vector Database
       │
       ▼
 Semantic Similarity Search
@@ -116,7 +116,7 @@ streamlit run app.py
 2. Extract text from the uploaded documents.
 3. Split the extracted text into overlapping chunks.
 4. Generate vector embeddings for each chunk.
-5. Store embeddings in a FAISS vector database.
+5. Store embeddings in a Pinecone vector database.
 6. Convert the user question into an embedding.
 7. Retrieve the most relevant document chunks using semantic similarity.
 8. Pass the retrieved context to Llama 3.2 through Ollama.
@@ -136,7 +136,7 @@ This project demonstrates practical implementation of:
 - Prompt Engineering
 - Local AI Model Deployment
 - LangChain
-- FAISS
+- Pinecone, FAISS
 - Streamlit Application Development
 
 ---
@@ -158,7 +158,3 @@ This project demonstrates practical implementation of:
 ## Author
 
 **Jaivinay Gudiveka**
-
-GitHub: https://github.com/Jaivinay
-
-LinkedIn: https://www.linkedin.com/in/jaivinay-gudiveka
